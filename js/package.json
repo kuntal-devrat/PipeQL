@@ -3,6 +3,10 @@
   "version": "1.1.7",
   "description": "JavaScript/TypeScript SDK for PipeQL - pipelined & injection-safe polyglot query language",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",

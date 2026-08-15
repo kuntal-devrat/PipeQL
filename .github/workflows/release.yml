@@ -56,6 +56,7 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          scope: '@flaxmbot'
       - uses: dtolnay/rust-toolchain@stable
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -71,7 +72,9 @@ jobs:
           npm run build
           npm pack
           if [ -n "$NODE_AUTH_TOKEN" ]; then
-            npm publish --access public || echo "npm publish failed or token unauthenticated, package built"
+            echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+            echo "@flaxmbot:registry=https://registry.npmjs.org/" >> .npmrc
+            npm publish --access public --provenance=false
           else
             echo "NPM_TOKEN not set, package built"
           fi
