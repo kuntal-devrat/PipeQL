@@ -86,6 +86,21 @@ pipeql-core = "1.1.6"
 npm install @flaxmbot/pipeql
 ```
 
+Compile with analyzer validation derived from your `table` DDL — one call,
+no hand-written catalog:
+
+```js
+import { compileWithSchema } from '@flaxmbot/pipeql';
+
+await compileWithSchema(
+  'from users | filter nme == $x',
+  'table users [id integer primary auto, name string]',
+); // throws: Unknown column 'nme'. Did you mean 'name'?
+```
+
+Prefer explicit steps? `catalogFromSchema(schema)` returns the catalog object
+accepted by `compileWithCatalog(source, catalog, dialect)`.
+
 ### Python
 
 ```bash

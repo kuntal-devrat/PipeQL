@@ -76,6 +76,20 @@ func main() {
 }
 ```
 
+Compile with analyzer validation derived from your `table` DDL — one call, no
+hand-written catalog:
+
+```go
+res, err := pipeql.CompileWithSchema(
+    "from users | filter nme == $x", "postgres",
+    "table users [id integer primary auto, name string]",
+)
+// err: Unknown column 'nme'...
+```
+
+Prefer explicit steps? `CatalogFromSchema(schema)` returns the catalog JSON
+accepted by `CompileWithCatalog(source, dialect, catalogJSON)`.
+
 ### Optional: Fluent builder (programmatic composition)
 
 For composing queries in code — conditional or looped pipeline stages, or

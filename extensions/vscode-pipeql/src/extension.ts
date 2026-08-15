@@ -122,9 +122,18 @@ async function compileActiveDocument(): Promise<void> {
     );
     return;
   }
+  let sqlContent = result.stdout;
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (parsed && typeof parsed.sql === "string") {
+      sqlContent = parsed.sql;
+    }
+  } catch {
+    // fallback to raw stdout
+  }
   const doc = await vscode.workspace.openTextDocument({
     language: "sql",
-    content: result.stdout,
+    content: sqlContent,
   });
   void vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside, true);
 }

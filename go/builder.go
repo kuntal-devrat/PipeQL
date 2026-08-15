@@ -61,6 +61,9 @@ type Builder struct {
 	values []kv
 }
 
+// Query is an alias for Builder for compatibility across naming conventions.
+type Query = Builder
+
 type kv struct {
 	key string
 	val any

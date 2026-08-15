@@ -12,6 +12,7 @@ pub enum ValueType {
     String,
     Bool,
     Null,
+    Timestamp,
     /// Any (default when no type information is available).
     Any,
 }
@@ -34,6 +35,7 @@ impl ValueType {
             ValueType::String => "string",
             ValueType::Bool => "bool",
             ValueType::Null => "null",
+            ValueType::Timestamp => "timestamp",
             ValueType::Any => "any",
         }
     }
@@ -491,41 +493,15 @@ impl<'a> Analyzer<'a> {
             }
             Expr::InSubquery { expr, subquery, .. } => {
                 self.infer_expr(analysis, errors, tables, scope, expr);
-                // Walk ALL subquery expressions for parameter extraction
-                for step in &subquery.steps {
-                    match step {
-                        PipelineStep::Filter { expr, .. } => {
-                            self.infer_expr(analysis, errors, tables, scope, expr);
-                        }
-                        PipelineStep::Select { columns, .. } => {
-                            for item in columns {
-                                self.infer_expr(analysis, errors, tables, scope, &item.expr);
-                            }
-                        }
-                        PipelineStep::Derive { assignments, .. } => {
-                            for a in assignments {
-                                self.infer_expr(analysis, errors, tables, scope, &a.expr);
-                            }
-                        }
-                        PipelineStep::Sort { items, .. } => {
-                            for item in items {
-                                self.infer_expr(analysis, errors, tables, scope, &item.expr);
-                            }
-                        }
-                        PipelineStep::Join { on, .. } => {
-                            self.infer_expr(analysis, errors, tables, scope, on);
-                        }
-                        PipelineStep::Group { columns, aggregates, .. } => {
-                            for col in columns {
-                                self.infer_expr(analysis, errors, tables, scope, col);
-                            }
-                            for agg in aggregates {
-                                for arg in &agg.args {
-                                    self.infer_expr(analysis, errors, tables, scope, arg);
-                                }
-                            }
-                        }
-                        _ => {}
+                // Analyze the subquery with its own table scope, derived columns, and catalog checks
+                let mut sub_analyzer = Analyzer::new(self.catalog);
+                sub_analyzer.strict_literals = self.strict_literals;
+                match sub_analyzer.analyze(subquery) {
+                    Ok(sub_analysis) => {
+                        analysis.merge(&sub_analysis);
+                    }
+                    Err(sub_errors) => {
+                        errors.extend(sub_errors);
                     }
                 }
                 ValueType::Bool

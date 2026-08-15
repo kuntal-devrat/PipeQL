@@ -90,6 +90,26 @@ PIPEQL_API PipeqlResult* pipeql_compile_with_catalog(
     const char* source, const char* dialect, const char* catalog_json,
     PipeqlError* err);
 
+/* Derive a JSON schema catalog from one or more PipeQL table DDL statements.
+ *
+ * The returned string must be freed with pipeql_string_free.
+ *
+ *   schema — NUL-terminated PipeQL table DDL source.
+ *   err    — caller-owned, zero-initialized error slot.
+ */
+PIPEQL_API char* pipeql_catalog_from_schema(const char* schema, PipeqlError* err);
+
+/* Compile a PipeQL source string with analyzer validation derived from schema DDL.
+ *
+ *   source  — NUL-terminated PipeQL source.
+ *   dialect — NUL-terminated dialect name. May be NULL for default.
+ *   schema  — NUL-terminated PipeQL table DDL source.
+ *   err     — caller-owned, zero-initialized error slot.
+ */
+PIPEQL_API PipeqlResult* pipeql_compile_with_schema(
+    const char* source, const char* dialect, const char* schema,
+    PipeqlError* err);
+
 /* Parse a PipeQL source into a lossless statement AST, returned as a JSON
  * string. Covers read pipelines, inserts, upserts, unions, and DDL.
  *

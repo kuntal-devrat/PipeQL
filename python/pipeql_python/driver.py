@@ -206,7 +206,7 @@ class PipeqlDriver:
         if not _DATA_RE.search(source):
             return source, merged
         data = merged.get("data") if isinstance(merged, dict) else None
-        if whole_object_as_data and not isinstance(data, dict):
+        if data is None and isinstance(merged, dict) and merged:
             data = merged
         expanded, values = _expand_data(source, data)
         merged.update(values)
@@ -353,7 +353,7 @@ class PipeqlDriver:
         src, p = self._prepare(source, params)
         compiled = self._compile(src)
         raw = await self._run_async(compiled, _bind(compiled, p))
-        if compiled["statement_type"] == "select":
+        if compiled["statement_type"] in ("select", "union"):
             return raw["rows"]
         return {"last_id": raw["last_id"], "changes": raw["changes"], "rows": []}
 
@@ -364,7 +364,7 @@ class PipeqlDriver:
         src, p = self._prepare(source, params)
         compiled = self._compile(src)
         raw = await self._run_async(compiled, _bind(compiled, p))
-        if compiled["statement_type"] == "select":
+        if compiled["statement_type"] in ("select", "union"):
             return {"rows": raw["rows"]}
         return {"last_id": raw["last_id"], "changes": raw["changes"], "rows": []}
 

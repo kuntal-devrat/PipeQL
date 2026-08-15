@@ -36,7 +36,8 @@ export interface CompileResult {
 }
 export interface SchemaColumn {
     name: string;
-    ty: "Integer" | "Float" | "String" | "Bool" | "Null" | "Any";
+    /** Analyzer catalog type. */
+    ty: "Integer" | "Float" | "String" | "Bool" | "Null" | "Timestamp" | "Any";
 }
 export interface SchemaTable {
     name: string;
@@ -72,6 +73,40 @@ export declare function compileWithCatalog(source: string, catalog: Catalog, dia
  * comments preserved). Useful for editors and tooling.
  */
 export declare function parse(source: string): Promise<unknown>;
+/**
+ * Derive an analyzer catalog from one or more PipeQL `table` statements.
+ *
+ * The same string that defines your DDL becomes the schema the analyzer
+ * validates against — no hand-written catalog, nothing to keep in sync.
+ *
+ * The derivation is memoized per schema string (concurrent calls for the
+ * same schema share one parse; failures are not cached), so `compileWithSchema`
+ * in a hot path pays the DDL parse cost only once.
+ *
+ * ```ts
+ * const catalog = await catalogFromSchema(`
+ *   table users [id integer primary auto, name string not null]
+ *   table posts [id integer primary auto, user_id integer, title string]
+ * `);
+ * // { users: { name: "users", columns: [{ name: "id", ty: "Integer" }, ...] }, ... }
+ * ```
+ */
+export declare function catalogFromSchema(schema: string): Promise<Catalog>;
+/**
+ * Compile with analyzer validation, deriving the catalog from `schema` DDL.
+ *
+ * One call instead of three: pass your `table` statements and get column/type
+ * checking against them for free.
+ *
+ * ```ts
+ * const { sql } = await compileWithSchema(
+ *   "from users | filter nme == $x",
+ *   "table users [id integer primary auto, name string]",
+ * );
+ * // throws: Unknown column 'nme'
+ * ```
+ */
+export declare function compileWithSchema(source: string, schema: string, dialect?: Dialect): Promise<CompileResult>;
 /** List of supported target dialects. */
 export declare function supportedDialects(): Promise<Dialect[]>;
 /** PipeQL version. */

@@ -258,19 +258,21 @@ impl Query {
     }
 
     /// `| union <other>` where `other` is a raw source string or another query.
-    pub fn union(self, other: impl IntoSource) -> Self {
-        let mut s = self;
-        s.source.push_str(" | union ");
-        s.source.push_str(&other.into_source());
-        s
+    pub fn union(mut self, other: impl IntoSource) -> Self {
+        let (other_src, other_vals) = other.into_source();
+        self.source.push_str(" | union ");
+        self.source.push_str(&other_src);
+        self.values.extend(other_vals);
+        self
     }
 
     /// `| union all <other>`
-    pub fn union_all(self, other: impl IntoSource) -> Self {
-        let mut s = self;
-        s.source.push_str(" | union all ");
-        s.source.push_str(&other.into_source());
-        s
+    pub fn union_all(mut self, other: impl IntoSource) -> Self {
+        let (other_src, other_vals) = other.into_source();
+        self.source.push_str(" | union all ");
+        self.source.push_str(&other_src);
+        self.values.extend(other_vals);
+        self
     }
 
     /// `| insert [<assignments>]` with auto-generated `$b0, $b1, ...` params.
@@ -381,30 +383,30 @@ impl Query {
 /// Something that can be used as a union operand: a raw source string or a
 /// builder query.
 pub trait IntoSource {
-    fn into_source(self) -> String;
+    fn into_source(self) -> (String, Vec<(String, Value)>);
 }
 
 impl IntoSource for String {
-    fn into_source(self) -> String {
-        self
+    fn into_source(self) -> (String, Vec<(String, Value)>) {
+        (self, Vec::new())
     }
 }
 
 impl IntoSource for &str {
-    fn into_source(self) -> String {
-        self.to_string()
+    fn into_source(self) -> (String, Vec<(String, Value)>) {
+        (self.to_string(), Vec::new())
     }
 }
 
 impl IntoSource for Query {
-    fn into_source(self) -> String {
-        self.source
+    fn into_source(self) -> (String, Vec<(String, Value)>) {
+        (self.source, self.values)
     }
 }
 
 impl IntoSource for &Query {
-    fn into_source(self) -> String {
-        self.source.clone()
+    fn into_source(self) -> (String, Vec<(String, Value)>) {
+        (self.source.clone(), self.values.clone())
     }
 }
 

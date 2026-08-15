@@ -33,6 +33,9 @@ struct CompileArgs {
     /// Path to a JSON catalog file for column validation.
     #[arg(long)]
     catalog: Option<String>,
+    /// Path to a PipeQL schema file (.pql) or raw table DDL string for column validation.
+    #[arg(long)]
+    schema: Option<String>,
     /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
@@ -67,7 +70,13 @@ fn main() {
 }
 
 fn run_compile(args: CompileArgs) {
-    let result = if let Some(catalog_path) = &args.catalog {
+    let result = if let Some(schema_arg) = &args.schema {
+        let schema_str = match fs::read_to_string(schema_arg) {
+            Ok(content) => content,
+            Err(_) => schema_arg.clone(),
+        };
+        pipeql_core::api::compile_with_schema(&args.query, &args.dialect, &schema_str)
+    } else if let Some(catalog_path) = &args.catalog {
         let catalog_json = match fs::read_to_string(catalog_path) {
             Ok(json) => json,
             Err(e) => {

@@ -5,11 +5,18 @@
 //! wasm-pack build crates/pipeql-wasm --target web --release --out-dir ../../js/dist
 //! ```
 
+use std::cell::RefCell;
+
 use wasm_bindgen::prelude::*;
 
-use pipeql_core::{api, StatementType};
+use pipeql_core::{api, Analysis, StatementType};
 
 /// A compiled query, exposed to JavaScript as a plain object.
+///
+/// The `analysis` payload is built **lazily**: it is the most expensive thing
+/// to cross the JS↔WASM boundary (a nested param map with per-param types and
+/// occurrence spans), and most callers never read it. It is serialized into a
+/// JS object only on first access and cached thereafter.
 #[derive(Debug)]
 #[wasm_bindgen]
 pub struct Compiled {
@@ -17,8 +24,9 @@ pub struct Compiled {
     params: js_sys::Array,
     statement_type: StatementType,
     is_mutation: bool,
-    analysis: JsValue,
     parameter_count: usize,
+    analysis_src: Analysis,
+    analysis: RefCell<Option<JsValue>>,
 }
 
 #[wasm_bindgen]
@@ -55,9 +63,16 @@ impl Compiled {
     }
 
     /// The full analysis document (param map, inferred types, occurrences).
+    /// Serialized to a JS object on first access (and cached), so the common
+    /// sql/params path never pays for it.
     #[wasm_bindgen(getter)]
     pub fn analysis(&self) -> JsValue {
-        self.analysis.clone()
+        if let Some(cached) = self.analysis.borrow().as_ref() {
+            return cached.clone();
+        }
+        let value = serde_wasm_bindgen::to_value(&self.analysis_src).unwrap_or(JsValue::NULL);
+        *self.analysis.borrow_mut() = Some(value.clone());
+        value
     }
 }
 
@@ -73,7 +88,8 @@ fn to_compiled(c: pipeql_core::CompiledQuery) -> Compiled {
             .collect::<js_sys::Array>(),
         statement_type: c.statement_type,
         is_mutation: c.is_mutation,
-        analysis: serde_wasm_bindgen::to_value(&c.analysis).unwrap_or(JsValue::NULL),
+        analysis_src: c.analysis,
+        analysis: RefCell::new(None),
         parameter_count,
     }
 }
@@ -109,6 +125,32 @@ pub fn compile_with_catalog(
     api::compile_with_catalog(source, dialect, Some(&catalog))
         .map(to_compiled)
         .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Compile a PipeQL source string with schema validation derived from DDL.
+#[wasm_bindgen(js_name = compileWithSchema)]
+pub fn compile_with_schema(
+    source: &str,
+    dialect: Option<String>,
+    schema: &str,
+) -> Result<Compiled, JsValue> {
+    let dialect = dialect.as_deref().unwrap_or("postgres");
+    api::compile_with_schema(source, dialect, schema)
+        .map(to_compiled)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Derive a catalog JSON object from one or more PipeQL table DDL statements.
+#[wasm_bindgen(js_name = catalogFromSchema)]
+pub fn catalog_from_schema(schema: &str) -> Result<JsValue, JsValue> {
+    let catalog = api::catalog_from_schema(schema)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let map: std::collections::HashMap<&str, &pipeql_core::TableMeta> =
+        catalog.tables().map(|t| (t.name.as_str(), t)).collect();
+    let json = serde_json::to_string(&map)
+        .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))?;
+    js_sys::JSON::parse(&json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {e:?}")))
 }
 
 /// Parse-only: returns a JSON description of the lossless AST (spans, comments,

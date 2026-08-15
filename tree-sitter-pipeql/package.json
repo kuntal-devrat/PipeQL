@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-pipeql",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Tree-sitter grammar for PipeQL - pipelined & injection-safe polyglot query language",
   "license": "MIT",
   "type": "module",

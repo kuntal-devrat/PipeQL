@@ -206,6 +206,53 @@ pub fn parse_statement(source: &str) -> Result<crate::ast::Statement, PipeQLErro
     parser.parse_statement().map_err(PipeQLError::Parse)
 }
 
+/// Derive an analyzer schema [`Catalog`] from one or more PipeQL `table` DDL statements.
+pub fn catalog_from_schema(schema: &str) -> Result<Catalog, PipeQLError> {
+    let mut parser = Parser::new(schema).map_err(PipeQLError::Parse)?;
+    let tables = parser.parse_schema().map_err(PipeQLError::Parse)?;
+
+    let mut catalog = Catalog::new();
+    for t in tables {
+        let name = t.name.name;
+        if catalog.table(&name).is_some() {
+            return Err(PipeQLError::Analysis(vec![AnalyzerError {
+                message: format!("duplicate table '{name}' in schema"),
+                span: t.span,
+                suggestion: None,
+            }]));
+        }
+        let columns = t
+            .columns
+            .into_iter()
+            .map(|c| {
+                let ty = match c.ty {
+                    crate::ast::ColumnType::Integer => crate::analyzer::ValueType::Integer,
+                    crate::ast::ColumnType::Float => crate::analyzer::ValueType::Float,
+                    crate::ast::ColumnType::String => crate::analyzer::ValueType::String,
+                    crate::ast::ColumnType::Bool => crate::analyzer::ValueType::Bool,
+                    crate::ast::ColumnType::Timestamp => crate::analyzer::ValueType::Timestamp,
+                };
+                crate::analyzer::ColumnMeta {
+                    name: c.name.name,
+                    ty,
+                }
+            })
+            .collect();
+        catalog.add_table(crate::analyzer::TableMeta { name, columns });
+    }
+    Ok(catalog)
+}
+
+/// Compile a PipeQL source string with analyzer validation derived from a schema DDL string.
+pub fn compile_with_schema(
+    source: &str,
+    dialect: &str,
+    schema: &str,
+) -> Result<CompiledQuery, PipeQLError> {
+    let catalog = catalog_from_schema(schema)?;
+    compile_with_catalog(source, dialect, Some(&catalog))
+}
+
 /// The list of supported target dialect names.
 pub fn supported_dialects() -> &'static [&'static str] {
     &["postgres", "sqlite", "duckdb", "mysql"]

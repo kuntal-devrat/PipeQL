@@ -361,3 +361,116 @@ func TestCompileWithCatalogAllDialects(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogFromSchema(t *testing.T) {
+	schema := "table users [id integer primary auto, name string not null]"
+	catalog, err := CatalogFromSchema(schema)
+	if err != nil {
+		t.Fatalf("CatalogFromSchema: %v", err)
+	}
+	want := `{"tables":{"users":{"name":"users","columns":[{"name":"id","ty":"Integer"},{"name":"name","ty":"String"}]}}}`
+	if catalog != want {
+		t.Errorf("unexpected catalog:\n got %s\nwant %s", catalog, want)
+	}
+}
+
+func TestCatalogFromSchemaMemoized(t *testing.T) {
+	// Same schema twice returns the identical string without re-deriving.
+	schema := "table users [id integer, name string]"
+	c1, err := CatalogFromSchema(schema)
+	if err != nil {
+		t.Fatalf("CatalogFromSchema: %v", err)
+	}
+	c2, err := CatalogFromSchema(schema)
+	if err != nil {
+		t.Fatalf("CatalogFromSchema: %v", err)
+	}
+	if c1 != c2 {
+		t.Errorf("memoized catalog should be identical, got %s vs %s", c1, c2)
+	}
+
+	// Errors are not cached: the same bad schema fails every time.
+	bad := "table t [id integer]\ntable t [id integer]"
+	if _, err := CatalogFromSchema(bad); err == nil {
+		t.Fatal("expected error for duplicate table")
+	}
+	if _, err := CatalogFromSchema(bad); err == nil {
+		t.Fatal("expected error again — failures must not be cached")
+	}
+}
+
+func TestCatalogFromSchemaTimestamp(t *testing.T) {
+	// Timestamp columns are now natively supported across all layers.
+	catalog, err := CatalogFromSchema("table events [id integer, at timestamp]")
+	if err != nil {
+		t.Fatalf("CatalogFromSchema: %v", err)
+	}
+	if !strings.Contains(catalog, `{"name":"at","ty":"Timestamp"}`) {
+		t.Errorf("timestamp column should have Timestamp type: %s", catalog)
+	}
+	if _, err := CompileWithCatalog("from events | filter at == $t", "postgres", catalog); err != nil {
+		t.Errorf("catalog with timestamp column rejected: %v", err)
+	}
+}
+
+func TestCatalogFromSchemaMultiTable(t *testing.T) {
+	schema := "table users [id integer primary auto]\n\ntable posts [id integer primary auto, user_id integer]"
+	catalog, err := CatalogFromSchema(schema)
+	if err != nil {
+		t.Fatalf("CatalogFromSchema: %v", err)
+	}
+	if !strings.Contains(catalog, "\"users\"") || !strings.Contains(catalog, "\"posts\"") {
+		t.Errorf("catalog should contain both tables: %s", catalog)
+	}
+}
+
+func TestCatalogFromSchemaErrors(t *testing.T) {
+	// No table statements -> error
+	if _, err := CatalogFromSchema("from users | select [id]"); err == nil {
+		t.Fatal("expected error for table-less schema")
+	}
+	// Duplicate table -> error
+	if _, err := CatalogFromSchema("table users [id integer]\ntable users [id integer]"); err == nil {
+		t.Fatal("expected error for duplicate table")
+	}
+	// Malformed table -> error
+	if _, err := CatalogFromSchema("table users [id integer"); err == nil {
+		t.Fatal("expected error for malformed table")
+	}
+}
+
+func TestCompileWithSchema(t *testing.T) {
+	schema := "table users [id integer primary auto, name string not null]"
+	// Valid compile with schema-derived validation
+	res, err := CompileWithSchema("from users | filter id == $id | select [name]", "postgres", schema)
+	if err != nil {
+		t.Fatalf("CompileWithSchema: %v", err)
+	}
+	if !strings.Contains(res.SQL, "SELECT name FROM users") {
+		t.Errorf("unexpected sql: %s", res.SQL)
+	}
+	if len(res.Params) != 1 {
+		t.Errorf("expected 1 param, got %v", res.Params)
+	}
+	// Unknown column rejected
+	_, err = CompileWithSchema("from users | filter nme == $x", "postgres", schema)
+	if err == nil {
+		t.Fatal("expected unknown-column error")
+	}
+	perr, ok := err.(*Err)
+	if !ok {
+		t.Fatalf("expected *Err, got %T", err)
+	}
+	if perr.Kind != ErrAnalysis {
+		t.Errorf("expected ErrAnalysis, got kind=%d msg=%s", perr.Kind, perr.Message)
+	}
+	if !strings.Contains(perr.Message, "nme") {
+		t.Errorf("error should mention column: %s", perr.Message)
+	}
+	// CompileWithSchema across all dialects
+	for _, dialect := range []string{"postgres", "sqlite", "duckdb", "mysql"} {
+		if _, err := CompileWithSchema("from users | select [id]", dialect, schema); err != nil {
+			t.Errorf("dialect %s: %v", dialect, err)
+		}
+	}
+}

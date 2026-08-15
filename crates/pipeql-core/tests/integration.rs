@@ -1116,3 +1116,55 @@ fn test_parse_statement_variants() {
         _ => panic!("expected CreateTable statement"),
     }
 }
+
+#[test]
+fn test_subquery_many_parameters_postgres_no_collision() {
+    // Outer query has $p1 and $p2. Subquery has 12 parameters ($s1 through $s12).
+    // Test verifies that $1 replacement in the subquery never collides with $10, $11, $12.
+    let src = "from orders | filter user_id in (from users | filter p1 == $s1 and p2 == $s2 and p3 == $s3 and p4 == $s4 and p5 == $s5 and p6 == $s6 and p7 == $s7 and p8 == $s8 and p9 == $s9 and p10 == $s10 and p11 == $s11 and p12 == $s12 | select [id]) and status == $p_status";
+    let res = pipeql_core::api::compile(src, "postgres").unwrap();
+    
+    // Check that $12 is present and not corrupted to $120 or similar
+    assert!(res.sql.contains("$12"), "SQL: {}", res.sql);
+    assert!(res.sql.contains("$13"), "SQL: {}", res.sql);
+    assert_eq!(res.params.len(), 13);
+}
+
+#[test]
+fn test_subquery_catalog_validation() {
+    let schema = r#"
+        table orders [id integer primary auto, customer_id integer, total float]
+        table customers [id integer primary auto, region string]
+    "#;
+    let catalog = pipeql_core::api::catalog_from_schema(schema).unwrap();
+
+    // Valid columns in both tables
+    let src = "from orders | filter customer_id in (from customers | filter region == 'EU' | select [id])";
+    let res = pipeql_core::api::compile_with_catalog(src, "postgres", Some(&catalog)).unwrap();
+    assert!(res.sql.contains("SELECT * FROM orders"));
+
+    // Invalid column in subquery must be caught
+    let invalid_sub = "from orders | filter customer_id in (from customers | filter non_existent == 'EU' | select [id])";
+    let err = pipeql_core::api::compile_with_catalog(invalid_sub, "postgres", Some(&catalog)).unwrap_err();
+    assert!(format!("{err}").contains("non_existent"));
+}
+
+#[test]
+fn test_block_comments() {
+    let src = "/* start comment */ from users /* inline comment */ | filter age > 18 /* end comment */";
+    let res = pipeql_core::api::compile(src, "sqlite").unwrap();
+    assert!(res.sql.contains("SELECT * FROM users"));
+    assert!(res.sql.contains("WHERE (age > 18)"));
+}
+
+#[test]
+fn test_native_catalog_from_schema_and_compile_with_schema() {
+    let schema = "table users [id integer primary auto, name string, created_at timestamp]";
+    let catalog = pipeql_core::api::catalog_from_schema(schema).unwrap();
+    assert!(catalog.has_column("users", "created_at"));
+
+    let res = pipeql_core::api::compile_with_schema("from users | filter id == $id", "sqlite", schema).unwrap();
+    assert!(res.sql.contains("SELECT * FROM users"));
+    assert_eq!(res.params, vec!["id"]);
+}
+

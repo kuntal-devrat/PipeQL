@@ -1,6 +1,6 @@
 {
   "name": "@flaxmbot/pipeql",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "JavaScript/TypeScript SDK for PipeQL - pipelined & injection-safe polyglot query language",
   "license": "MIT",
   "type": "module",

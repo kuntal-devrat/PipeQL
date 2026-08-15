@@ -7,7 +7,7 @@
 // Prerequisites:
 //   - Build libpipeql once: `cargo build --release -p pipeql-cffi`
 //   - Point CGO_LDFLAGS at the produced library, e.g. on Linux:
-//       CGO_LDFLAGS="-L$PWD/target/release -lpipeql_cffi"
+//     CGO_LDFLAGS="-L$PWD/target/release -lpipeql_cffi"
 //
 // Usage:
 //
@@ -124,6 +124,65 @@ func CompileWithCatalog(source, dialect, catalogJSON string) (*Result, error) {
 	}
 	defer C.pipeql_result_free(res)
 
+	return parseResult(res), nil
+}
+
+// CatalogFromSchema derives an analyzer catalog (as the JSON string accepted
+// by CompileWithCatalog) from one or more PipeQL `table` statements. The same
+// string that defines your DDL becomes the schema the analyzer validates
+// against — no hand-written catalog, nothing to keep in sync.
+//
+//	catalog, err := pipeql.CatalogFromSchema("table users [id integer primary auto, name string]")
+//	res, err := pipeql.CompileWithCatalog("from users | filter nme == $x", "postgres", catalog)
+func CatalogFromSchema(schema string) (string, error) {
+	cschema := C.CString(schema)
+	defer C.free(unsafe.Pointer(cschema))
+
+	var cerr C.PipeqlError
+	res := C.pipeql_catalog_from_schema(cschema, &cerr)
+	if res == nil {
+		defer C.pipeql_error_clear(&cerr)
+		msg := "PipeQL catalog derivation failed"
+		if cerr.message != nil {
+			msg = C.GoString(cerr.message)
+		}
+		return "", &Err{Kind: ErrKind(cerr.kind), Message: msg}
+	}
+	defer C.pipeql_string_free(res)
+	return C.GoString(res), nil
+}
+
+// CompileWithSchema compiles a PipeQL source string with analyzer validation,
+// deriving the catalog from `schema` DDL in a single call — no separate
+// catalog JSON to build or keep in sync.
+//
+//	res, err := pipeql.CompileWithSchema(
+//	    "from users | filter nme == $x", "postgres",
+//	    "table users [id integer primary auto, name string]",
+//	)
+//	// err: Unknown column 'nme'
+func CompileWithSchema(source, dialect, schema string) (*Result, error) {
+	if dialect == "" {
+		dialect = "postgres"
+	}
+	csrc := C.CString(source)
+	defer C.free(unsafe.Pointer(csrc))
+	cdial := C.CString(dialect)
+	defer C.free(unsafe.Pointer(cdial))
+	csch := C.CString(schema)
+	defer C.free(unsafe.Pointer(csch))
+
+	var cerr C.PipeqlError
+	res := C.pipeql_compile_with_schema(csrc, cdial, csch, &cerr)
+	if res == nil {
+		defer C.pipeql_error_clear(&cerr)
+		msg := "PipeQL compile failed"
+		if cerr.message != nil {
+			msg = C.GoString(cerr.message)
+		}
+		return nil, &Err{Kind: ErrKind(cerr.kind), Message: msg}
+	}
+	defer C.pipeql_result_free(res)
 	return parseResult(res), nil
 }
 

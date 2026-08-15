@@ -8,13 +8,18 @@ high-level APIs: WASM (JS), native Python, a C ABI, and a language server.
 The WASM engine compiles the core to a ~107KB-gzip bundle.
 
 ```ts
-import { compile, compileWithCatalog, parseAst, supportedDialects } from "@flaxmbot/pipeql";
+import { compile, compileWithCatalog, compileWithSchema, catalogFromSchema, parse, supportedDialects } from "@flaxmbot/pipeql";
 
 const result = compile("from users | filter age >= $min | take 5", "postgres");
 result.sql;             // "SELECT ... WHERE (age >= $1) ... LIMIT 5;"
 result.params;          // ["min"]
 result.statementType;   // "select"
 result.isMutation;      // false
+
+// Analyzer validation derived from your table DDL — one call, no catalog to write:
+await compileWithSchema("from users | filter nme == $x",
+  "table users [id integer primary auto, name string]");  // throws: Unknown column 'nme'
+const catalog = await catalogFromSchema("table users [id integer primary auto, name string]");
 
 // Tagged template — compiles and types the interpolation:
 const sql = pipeql`from t | filter id == ${id}`;
@@ -85,6 +90,12 @@ print(result["sql"])     # ... WHERE (age >= $1) ... LIMIT 5;
 print(result["params"])  # ["min"]
 print(result["statement_type"])  # "select"
 print(result["is_mutation"])     # False
+
+# Analyzer validation derived from your table DDL — one call, no catalog to write:
+compile_with_schema(
+    "from users | filter nme == $x", "sqlite",
+    "table users [id integer primary auto, name string]",
+)  # raises: Unknown column 'nme'
 ```
 
 Build & test:
@@ -226,6 +237,8 @@ dialects := pipeql.SupportedDialects() // ["postgres","sqlite","duckdb","mysql"]
 |----------|---------|-------|
 | `Compile(source, dialect)` | `(*Result, error)` | Basic compile |
 | `CompileWithCatalog(source, dialect, catalogJSON)` | `(*Result, error)` | With schema validation. Empty string = no validation. |
+| `CatalogFromSchema(schema)` | `(string, error)` | Derive catalog JSON from `table` DDL — no hand-written catalog |
+| `CompileWithSchema(source, dialect, schema)` | `(*Result, error)` | Compile + schema-derived validation in one call |
 | `Parse(source)` | `(json.RawMessage, error)` | JSON AST of the statement |
 | `SupportedDialects()` | `[]string` | List of dialect names |
 | `Version()` | `string` | Library version |

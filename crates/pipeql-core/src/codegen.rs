@@ -268,17 +268,36 @@ impl Compiler {
                 // Remove trailing semicolon from subquery
                 let sub_sql_raw = sub_sql_raw.trim_end_matches(';').trim();
                 // For Postgres, the sub-compiler assigned its own $1, $2 etc.
-                // which are wrong — rewrite them to use the outer compiler's numbering.
+                // which are wrong — rewrite them to use the outer compiler's numbering
+                // in a single pass to avoid substring collisions (e.g. $1 vs $10) and cascade replacements.
                 let sub_sql = if self.kind.placeholder_style() == ParamStyle::Postgres {
-                    let mut result = sub_sql_raw.to_string();
-                    // The sub-compiler's params are in order: sub_compiler.params[0] = $1, etc.
-                    // Replace each $N with the outer compiler's placeholder.
-                    for (i, param_name) in sub_compiler.params.iter().enumerate() {
-                        let old_placeholder = format!("${}", i + 1);
-                        let new_placeholder = self.placeholder(param_name);
-                        result = result.replace(&old_placeholder, &new_placeholder);
+                    let mut out = String::with_capacity(sub_sql_raw.len() + 16);
+                    let bytes = sub_sql_raw.as_bytes();
+                    let mut i = 0;
+                    while i < bytes.len() {
+                        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
+                            i += 1; // skip '$'
+                            let start_digit = i;
+                            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                                i += 1;
+                            }
+                            let num_str = &sub_sql_raw[start_digit..i];
+                            if let Ok(idx) = num_str.parse::<usize>() {
+                                if idx >= 1 && idx <= sub_compiler.params.len() {
+                                    let param_name = &sub_compiler.params[idx - 1];
+                                    let placeholder = self.placeholder(param_name);
+                                    out.push_str(&placeholder);
+                                    continue;
+                                }
+                            }
+                            out.push('$');
+                            out.push_str(num_str);
+                        } else {
+                            out.push(bytes[i] as char);
+                            i += 1;
+                        }
                     }
-                    result
+                    out
                 } else {
                     // For ?-style dialects, params are positional — just merge them
                     for p in &sub_compiler.params {

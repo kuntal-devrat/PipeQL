@@ -739,6 +739,112 @@ pub unsafe extern "C" fn pipeql_compile_with_catalog(
     }
 }
 
+/// Derive a JSON schema catalog from one or more PipeQL `table` statements.
+///
+/// Returns an owned JSON string (free with `pipeql_string_free`) on success,
+/// or NULL on failure with `err` populated.
+#[no_mangle]
+pub unsafe extern "C" fn pipeql_catalog_from_schema(
+    schema: *const c_char,
+    err: *mut PipeqlError,
+) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let schema_str = read_cstr(schema);
+        match schema_str {
+            Some(s) => match api::catalog_from_schema(&s) {
+                Ok(catalog) => match serde_json::to_string(&catalog) {
+                    Ok(json) => into_cstring(json),
+                    Err(e) => {
+                        write_error(
+                            err,
+                            PIPEQL_ERR_CODEGEN,
+                            &format!("Catalog serialization failed: {e}"),
+                        );
+                        ptr::null_mut()
+                    }
+                },
+                Err(e) => {
+                    write_error(err, classify(&e), &format!("{e}"));
+                    ptr::null_mut()
+                }
+            },
+            None => {
+                write_error(err, PIPEQL_ERR_PARSE, "schema must be a non-null string");
+                ptr::null_mut()
+            }
+        }
+    }));
+    match result {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            write_error(err, PIPEQL_ERR_PARSE, "PipeQL panicked while building catalog");
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Compile a PipeQL source string with analyzer validation derived from a schema DDL string.
+#[no_mangle]
+pub unsafe extern "C" fn pipeql_compile_with_schema(
+    source: *const c_char,
+    dialect: *const c_char,
+    schema: *const c_char,
+    err: *mut PipeqlError,
+) -> *mut PipeqlResult {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let src = read_cstr(source);
+        let dialect_str = read_cstr(dialect);
+        let schema_str = read_cstr(schema);
+
+        match (src, schema_str) {
+            (Some(s), Some(sch)) => {
+                match api::compile_with_schema(
+                    &s,
+                    dialect_str.as_deref().unwrap_or("postgres"),
+                    &sch,
+                ) {
+                    Ok(compiled) => {
+                        let params_json = serde_json::to_string(&compiled.params)
+                            .unwrap_or_else(|_| "[]".to_string());
+                        let analysis_json = serde_json::to_string(&compiled.analysis)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        let parameter_count = compiled.params.len() as i32;
+                        Box::into_raw(Box::new(PipeqlResult {
+                            sql: into_cstring(compiled.sql),
+                            params_json: into_cstring(params_json),
+                            statement_type: into_cstring(
+                                compiled.statement_type.as_str().to_string(),
+                            ),
+                            is_mutation: compiled.is_mutation as i32,
+                            analysis_json: into_cstring(analysis_json),
+                            parameter_count,
+                        }))
+                    }
+                    Err(e) => {
+                        write_error(err, classify(&e), &format!("{e}"));
+                        ptr::null_mut()
+                    }
+                }
+            }
+            (None, _) => {
+                write_error(err, PIPEQL_ERR_PARSE, "source must be a non-null string");
+                ptr::null_mut()
+            }
+            (_, None) => {
+                write_error(err, PIPEQL_ERR_PARSE, "schema must be a non-null string");
+                ptr::null_mut()
+            }
+        }
+    }));
+    match result {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            write_error(err, PIPEQL_ERR_PARSE, "PipeQL panicked while compiling");
+            ptr::null_mut()
+        }
+    }
+}
+
 /// Parse a PipeQL source into a lossless statement AST, returned as a JSON
 /// string. Covers read pipelines, inserts, upserts, unions, and DDL.
 ///

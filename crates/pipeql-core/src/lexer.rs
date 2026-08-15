@@ -235,6 +235,22 @@ impl<'a> Lexer<'a> {
         TokenKind::Comment(text.trim().to_string())
     }
 
+    fn read_block_comment(&mut self, start: usize) -> Result<TokenKind, LexerError> {
+        let mut text = String::new();
+        while let Some(ch) = self.advance() {
+            if ch == '*' && self.peek() == Some('/') {
+                self.advance(); // consume '/'
+                return Ok(TokenKind::Comment(text.trim().to_string()));
+            }
+            text.push(ch);
+        }
+        Err(LexerError {
+            message: "Unterminated block comment".to_string(),
+            span: Span::new(start, self.pos),
+            suggestion: Some("Did you forget to close the comment with `*/`?".to_string()),
+        })
+    }
+
     fn read_string(&mut self, start: usize) -> Result<TokenKind, LexerError> {
         let mut value = String::new();
         loop {
@@ -482,7 +498,18 @@ impl<'a> Lexer<'a> {
                 }
                 '/' => {
                     self.advance();
-                    TokenKind::Slash
+                    if self.peek() == Some('*') {
+                        self.advance(); // consume '*'
+                        match self.read_block_comment(start) {
+                            Ok(kind) => kind,
+                            Err(e) => {
+                                errors.push(e);
+                                continue;
+                            }
+                        }
+                    } else {
+                        TokenKind::Slash
+                    }
                 }
                 '=' => {
                     self.advance();

@@ -381,6 +381,23 @@ const { lastId, changes } = await db.execute('into notes | insert [title = $titl
 const newNote = await db.insertAndFetch('into notes | insert $data', req.body);
 ```
 
+**Analyzer validation in one call:** derive the catalog from your `table` DDL
+and compile with column/type checking — nothing hand-written, nothing to drift:
+
+```javascript
+import { compileWithSchema, catalogFromSchema } from '@flaxmbot/pipeql';
+
+const SCHEMA = `
+table users [id integer primary auto, name string not null]
+table posts [id integer primary auto, user_id integer, title string]
+`;
+
+await compileWithSchema('from users | filter nme == $x', SCHEMA);
+// throws: Unknown column 'nme'. Did you mean 'name'?
+
+const catalog = await catalogFromSchema(SCHEMA); // explicit two-step form
+```
+
 ### Python
 
 ```python
@@ -405,6 +422,31 @@ rows = db.query("from users | filter role == $role", {"role": "admin"})
 > queries return rows just like `select`; only mutations and DDL dispatch to
 > `execute()`.
 
+**Analyzer validation in one command (no hand-written catalog):** get
+column/type checking and typo suggestions at compile time by passing your
+`table` DDL straight to `compile_with_schema` — the catalog is derived from
+the schema itself, so it can never drift:
+
+```python
+from pipeql_python import compile_with_schema
+
+SCHEMA = """
+table users [id integer primary auto, name string not null, email string]
+table posts [id integer primary auto, user_id integer, title string]
+"""
+
+compile_with_schema(
+    "from users | filter nme == $x", "sqlite", SCHEMA
+)  # raises: Unknown column 'nme'. Did you mean 'name'?
+```
+
+Need the catalog itself? `catalog_from_schema(SCHEMA)` returns it in the
+shape accepted by `compile_with_catalog` — same derivation, two explicit
+steps. Multi-table schemas are supported (one `table` statement per line,
+each possibly spanning multiple lines); non-table statements are ignored; a
+schema with no `table` statement (or a duplicate table name) raises
+`ValueError`.
+
 ### Go
 
 ```go
@@ -422,6 +464,19 @@ func main() {
     fmt.Println("SQL:", res.SQL)       // SELECT id, name FROM users WHERE (age >= $1);
     fmt.Println("Params:", res.Params) // ["min"]
 }
+```
+
+**Analyzer validation in one call:** derive the catalog from your `table` DDL
+and compile with column/type checking — nothing hand-written, nothing to drift:
+
+```go
+schema := "table users [id integer primary auto, name string not null]"
+
+res, err := pipeql.CompileWithSchema("from users | filter nme == $x", "postgres", schema)
+// err: Unknown column 'nme'...
+
+catalog, err := pipeql.CatalogFromSchema(schema) // explicit two-step form
+res, err = pipeql.CompileWithCatalog("from users | select [id]", "postgres", catalog)
 ```
 
 ### C

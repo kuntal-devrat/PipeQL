@@ -202,7 +202,7 @@ export default function App() {
     <aside className="hidden lg:flex flex-col w-56 shrink-0 self-start sticky top-[52px] h-[calc(100vh-52px)] py-5 bg-background border-r border-surface-container overflow-y-auto" style={{scrollbarWidth:'none'}}>
       <div className="mb-3 px-4">
         <h2 className="text-base font-bold text-on-surface">Docs</h2>
-        <span className="text-[9px] text-on-surface-variant font-medium mt-0.5 block">v1.1.6</span>
+        <span className="text-[9px] text-on-surface-variant font-medium mt-0.5 block">v1.1.7</span>
       </div>
       <nav className="flex-1 flex flex-col gap-1">
         {SIDEBAR.map(({ group, items }) => (
@@ -326,7 +326,7 @@ export default function App() {
               <div className="relative z-10 max-w-3xl w-full flex flex-col items-center text-center space-y-5">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-2xl bg-surface-container border border-outline-variant/30 text-on-surface-variant text-[11px] font-semibold fade-in-up cursor-pointer hover:bg-surface-container-high transition-colors"
                   onClick={() => goToDoc('quickstart')}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>v1.1.6 Polyglot release is live
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>v1.1.7 Polyglot release is live
                 </div>
                 <h1 className="text-5xl md:text-7xl font-bold fade-in-up delay-100 tracking-tight leading-tight select-none">
                   <span className="g-blue inline-block hover:-translate-y-2 transition-transform">P</span>

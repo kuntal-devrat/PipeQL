@@ -534,7 +534,7 @@ impl Parser {
         }))
     }
 
-    fn parse_create_table(&mut self) -> Result<Statement, Vec<ParseError>> {
+    fn parse_create_table_stmt(&mut self) -> Result<CreateTableStmt, Vec<ParseError>> {
         let token = self.advance(); // consume 'table'
         let span_start = token.span.start;
 
@@ -558,14 +558,52 @@ impl Parser {
         self.expect(&TokenKind::RBracket).map_err(|e| vec![e])?;
 
         self.skip_newlines();
-        self.reject_leftover()?;
         let span = Span::new(span_start, self.peek_token().span.start);
-        Ok(Statement::CreateTable(CreateTableStmt {
+        Ok(CreateTableStmt {
             name,
             columns,
             comments: std::mem::take(&mut self.comments),
             span,
-        }))
+        })
+    }
+
+    fn parse_create_table(&mut self) -> Result<Statement, Vec<ParseError>> {
+        let stmt = self.parse_create_table_stmt()?;
+        self.reject_leftover()?;
+        Ok(Statement::CreateTable(stmt))
+    }
+
+    /// Parse one or more `table` DDL statements from a schema definition.
+    pub fn parse_schema(&mut self) -> Result<Vec<CreateTableStmt>, Vec<ParseError>> {
+        let mut tables = Vec::new();
+        self.skip_newlines();
+
+        while !matches!(self.peek(), TokenKind::Eof) {
+            match self.peek() {
+                TokenKind::Table => {
+                    let table = self.parse_create_table_stmt()?;
+                    tables.push(table);
+                }
+                other => {
+                    return Err(vec![ParseError {
+                        message: format!("Expected 'table' statement in schema, found '{other}'"),
+                        span: self.peek_token().span,
+                        suggestion: Some("Schemas consist of `table <name> [column defs]` statements".to_string()),
+                    }]);
+                }
+            }
+            self.skip_newlines();
+        }
+
+        if tables.is_empty() {
+            return Err(vec![ParseError {
+                message: "Schema contains no 'table' statements".to_string(),
+                span: self.eof_token.span,
+                suggestion: Some("Provide at least one `table <name> [...]` statement".to_string()),
+            }]);
+        }
+
+        Ok(tables)
     }
 
     fn parse_column_def(&mut self) -> Result<ColumnDef, ParseError> {

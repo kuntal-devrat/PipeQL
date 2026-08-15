@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  catalogFromSchema,
   compile,
   compileWithCatalog,
+  compileWithSchema,
   parse,
   pipeql,
   supportedDialects,
@@ -110,6 +112,61 @@ await compile("from t", "postgres");
     () => compileWithCatalog("from users | select [nope]", catalog),
     /nope|Unknown column/,
   );
+}
+
+// 4b. Schema-derived catalog + one-call compileWithSchema
+{
+  const schema =
+    "table users [id integer primary auto, name string not null]\n\ntable posts [id integer primary auto, user_id integer]";
+  const catalog = await catalogFromSchema(schema);
+  assert.deepEqual(catalog.users.columns, [
+    { name: "id", ty: "Integer" },
+    { name: "name", ty: "String" },
+  ]);
+  assert.deepEqual(Object.keys(catalog).sort(), ["posts", "users"]);
+
+  const ok = await compileWithSchema("from users | filter id == $id", schema);
+  assert.ok(ok.sql.includes("WHERE (id = $1)"), ok.sql);
+  assert.deepEqual(ok.params, ["id"]);
+
+  await assert.rejects(
+    () => compileWithSchema("from users | filter nme == $x", schema),
+    /nme|Unknown column/,
+  );
+  await assert.rejects(
+    () => compileWithSchema("from users | select [id]", "from users | select [id]"),
+    /table/,
+  );
+  await assert.rejects(
+    () => catalogFromSchema("table t [id integer]\ntable t [id integer]"),
+    /duplicate table/,
+  );
+
+  // Timestamp columns are now natively typed as Timestamp across all layers.
+  const ts = await catalogFromSchema("table events [id integer, at timestamp]");
+  assert.deepEqual(ts.events.columns, [
+    { name: "id", ty: "Integer" },
+    { name: "at", ty: "Timestamp" },
+  ]);
+  await compileWithSchema("from events | filter at == $t", "table events [id integer, at timestamp]");
+
+  // Derivation is memoized, and callers get defensive copies: mutating the
+  // returned catalog must not poison the cache for the next caller.
+  const c1 = await catalogFromSchema("table t [id integer]");
+  const c2 = await catalogFromSchema("table t [id integer]");
+  assert.deepEqual(c1, c2);
+  assert.notEqual(c1, c2);
+  c1.t.columns.push({ name: "junk", ty: "String" });
+  const c3 = await catalogFromSchema("table t [id integer]");
+  assert.deepEqual(c3.t.columns, [{ name: "id", ty: "Integer" }]);
+
+  // Errors are not cached: the same bad schema raises every time.
+  for (let i = 0; i < 2; i++) {
+    await assert.rejects(
+      () => catalogFromSchema("table t [id integer]\ntable t [id integer]"),
+      /duplicate table/,
+    );
+  }
 }
 
 // 5. Errors carry actionable hints

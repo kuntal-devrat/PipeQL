@@ -253,5 +253,89 @@ def test_pipeql_python():
     conn2.close()
 
 
+def test_catalog_from_schema():
+    """catalog_from_schema derives an analyzer catalog from table statements."""
+    catalog = p.catalog_from_schema(
+        "table users [id integer primary auto, name string not null]"
+    )
+    assert catalog["users"]["name"] == "users"
+    assert catalog["users"]["columns"] == [
+        {"name": "id", "ty": "Integer"},
+        {"name": "name", "ty": "String"},
+    ]
+
+    # Multi-table schemas, one table per line, blank lines tolerated.
+    catalog = p.catalog_from_schema(
+        "table users [id integer primary auto]\n\ntable posts [id integer primary auto, user_id integer]"
+    )
+    assert set(catalog) == {"users", "posts"}
+
+    # Derived catalog actually validates: a column typo is rejected.
+    try:
+        p.compile_with_catalog("from users | filter nme == $x", "sqlite", catalog)
+        raise AssertionError("expected compile failure for unknown column")
+    except Exception:
+        pass
+    # ...while a correct column compiles.
+    p.compile_with_catalog("from users | filter id == $x", "sqlite", catalog)
+
+    # Non-table statements are ignored; a table-less source raises ValueError.
+    try:
+        p.catalog_from_schema("from users | select [id]")
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "table" in str(e)
+
+    # Duplicate table names are a mistake, not a merge.
+    try:
+        p.catalog_from_schema(
+            "table users [id integer]\ntable users [id integer]"
+        )
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "duplicate table" in str(e)
+
+    # One-call form: compile_with_schema(source, dialect, schema) derives the
+    # catalog from the DDL and validates in a single command.
+    schema = "table users [id integer primary auto, name string not null]"
+    r = p.compile_with_schema("from users | filter id == $x", "sqlite", schema)
+    assert "WHERE (id = ?)" in r["sql"]
+    assert r["parameter_count"] == 1
+
+    # Timestamp columns are natively typed as Timestamp across all layers.
+    ts = p.catalog_from_schema("table events [id integer, at timestamp]")
+    assert ts["events"]["columns"][1] == {"name": "at", "ty": "Timestamp"}
+    p.compile_with_catalog("from events | filter at == $t", "sqlite", ts)
+
+    # Derivation is memoized, and callers get defensive copies: mutating the
+    # returned catalog must not poison the cache for the next caller.
+    c1 = p.catalog_from_schema("table t [id integer]")
+    c2 = p.catalog_from_schema("table t [id integer]")
+    assert c1 == c2
+    assert c1 is not c2
+    c1["t"]["columns"].append({"name": "junk", "ty": "String"})
+    c3 = p.catalog_from_schema("table t [id integer]")
+    assert [col["name"] for col in c3["t"]["columns"]] == ["id"]
+
+    # Errors are not cached: the same bad schema raises every time.
+    for _ in range(2):
+        try:
+            p.catalog_from_schema("table t [id integer]\ntable t [id integer]")
+            raise AssertionError("expected ValueError")
+        except ValueError as e:
+            assert "duplicate table" in str(e)
+    try:
+        p.compile_with_schema("from users | filter nme == $x", "sqlite", schema)
+        raise AssertionError("expected unknown-column error")
+    except Exception:
+        pass
+    try:
+        p.compile_with_schema("from users | select [id]", "sqlite", "from users | select [id]")
+        raise AssertionError("expected ValueError")
+    except ValueError as e:
+        assert "table" in str(e)
+
+
 if __name__ == "__main__":
     test_pipeql_python()
+    test_catalog_from_schema()

@@ -128,6 +128,7 @@ fn parse_catalog(d: &Bound<'_, PyDict>) -> PyResult<Catalog> {
                 "String" | "string" => ValueType::String,
                 "Bool" | "bool" => ValueType::Bool,
                 "Null" | "null" => ValueType::Null,
+                "Timestamp" | "timestamp" => ValueType::Timestamp,
                 _ => ValueType::Any,
             };
             columns.push(ColumnMeta { name: col_name, ty });
@@ -135,6 +136,37 @@ fn parse_catalog(d: &Bound<'_, PyDict>) -> PyResult<Catalog> {
         catalog.add_table(TableMeta { name, columns });
     }
     Ok(catalog)
+}
+
+/// Compile a PipeQL source string with schema validation derived from DDL.
+#[pyfunction]
+#[pyo3(signature = (source, dialect=None, schema=None))]
+#[allow(clippy::useless_conversion)]
+fn compile_with_schema(
+    source: &str,
+    dialect: Option<&str>,
+    schema: Option<&str>,
+) -> PyResult<PyObject> {
+    let dialect = dialect.unwrap_or("postgres");
+    let schema_str = schema.ok_or_else(|| PyValueError::new_err("schema DDL string is required"))?;
+    let parsed_catalog = api::catalog_from_schema(schema_str).map_err(|e| py_error(&e))?;
+    Python::with_gil(|py| compile_result(py, source, dialect, Some(parsed_catalog)))
+}
+
+/// Derive a catalog dict from one or more PipeQL table statements.
+#[pyfunction]
+#[allow(clippy::useless_conversion)]
+fn catalog_from_schema(schema: &str) -> PyResult<PyObject> {
+    let catalog = api::catalog_from_schema(schema).map_err(|e| py_error(&e))?;
+    let map: std::collections::HashMap<&str, &pipeql_core::TableMeta> =
+        catalog.tables().map(|t| (t.name.as_str(), t)).collect();
+    let json = serde_json::to_string(&map)
+        .map_err(|e| PyRuntimeError::new_err(format!("serialization error: {e}")))?;
+    Python::with_gil(|py| {
+        let json_mod = py.import_bound("json")?;
+        let obj = json_mod.call_method1("loads", (json,))?;
+        Ok(obj.unbind())
+    })
 }
 
 /// Parse a PipeQL source into a JSON-serializable AST (with spans and comments).
@@ -187,6 +219,8 @@ fn py_error(e: &PipeQLError) -> PyErr {
 fn pipeql_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile, m)?)?;
     m.add_function(wrap_pyfunction!(compile_with_catalog, m)?)?;
+    m.add_function(wrap_pyfunction!(compile_with_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(catalog_from_schema, m)?)?;
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(supported_dialects, m)?)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
