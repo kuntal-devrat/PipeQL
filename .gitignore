@@ -9,3 +9,6 @@ __pycache__/
 *.py[cod]
 .freebuff/
 *.def
+
+python/pipeql_python/pipeql_python.abi3.so
+*.vsix
