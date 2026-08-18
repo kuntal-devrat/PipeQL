@@ -744,6 +744,9 @@ pub unsafe extern "C" fn pipeql_compile_with_catalog(
 /// Returns an owned JSON string (free with `pipeql_string_free`) on success,
 /// or NULL on failure with `err` populated.
 #[no_mangle]
+/// # Safety
+/// `schema` must be a null-terminated UTF-8 string.
+/// `err` must be a valid pointer to a `PipeqlError` struct.
 pub unsafe extern "C" fn pipeql_catalog_from_schema(
     schema: *const c_char,
     err: *mut PipeqlError,
@@ -785,6 +788,10 @@ pub unsafe extern "C" fn pipeql_catalog_from_schema(
 
 /// Compile a PipeQL source string with analyzer validation derived from a schema DDL string.
 #[no_mangle]
+/// # Safety
+/// `source`, `dialect`, and `schema` must be null-terminated UTF-8 strings.
+/// `dialect` may be NULL, in which case it defaults to "postgres".
+/// `err` must be a valid pointer to a `PipeqlError` struct.
 pub unsafe extern "C" fn pipeql_compile_with_schema(
     source: *const c_char,
     dialect: *const c_char,
