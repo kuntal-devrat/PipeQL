@@ -2,9 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO Flaxmbot/PipeQL
     REF v1.1.7
-    # TODO: regenerate SHA512 after the v1.1.7 tag is pushed:
-    #   curl -L https://github.com/Flaxmbot/PipeQL/archive/v1.1.7.tar.gz | sha512sum
-    SHA512 5f5327e91eb27afef83ac4d51c4ea6f5b53cb485a240e405c2f6a5a5600b7ad9475746d53ec5002a6894dff0a5a0bd9c9e5886e4060e781d114dea5e5377f53b
+    SHA512 d35cac2cacf9262d9d43664f46c9217b2feabf28c25814c7805dcf35b5cb24c1d4e024ceb7c4a75d9bb7c86917f224b75ded19bd48bce62b3fe67c8821859b5f
     HEAD_REF master
 )
 
