@@ -385,10 +385,6 @@ export class PipeqlDriver {
     const { source: src, params: p } = this.prepare(source, params, true);
     const compiled = await this.compiled(src);
     const args = this.bind(compiled, p);
-    if (this.driver === "mysql2") {
-      const raw = await this.runRaw(compiled, args);
-      return { lastId: raw.lastId, changes: raw.changes as number, rows: [] };
-    }
     const rows = await this.runQuery(withReturning(compiled.sql), args);
     if (rows.length === 0) {
       return { lastId: undefined, changes: 0, rows: [] };
@@ -413,10 +409,6 @@ export class PipeqlDriver {
     const { source: src, params: p } = this.prepare(source, params);
     const compiled = await this.compiled(src);
     const args = this.bind(compiled, p);
-    if (this.driver === "mysql2") {
-      const raw = await this.runRaw(compiled, args);
-      return { lastId: raw.lastId, changes: raw.changes as number, rows: [] };
-    }
     const rows = await this.runQuery(withReturning(compiled.sql), args);
     if (rows.length === 0) {
       return { lastId: undefined, changes: 0, rows: [] };
