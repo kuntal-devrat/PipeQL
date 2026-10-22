@@ -105,14 +105,30 @@ fn levenshtein_distance_ci(a: &str, b: &str) -> usize {
         *slot = j;
     }
 
+    // `levenshtein_distance_ci` is currently only called when b_len <= 16
+    let mut b_lower = [0u8; 16];
+    let max_len = b_len.min(16);
+    for (i, b_ch) in b.bytes().take(16).enumerate() {
+        b_lower[i] = b_ch.to_ascii_lowercase();
+    }
+
     for (i, a_ch) in a.bytes().enumerate() {
         curr[0] = i + 1;
         let a_lower = a_ch.to_ascii_lowercase();
-        for (j, b_ch) in b.bytes().enumerate() {
-            let cost = if a_lower == b_ch.to_ascii_lowercase() { 0 } else { 1 };
+        for j in 0..max_len {
+            let cost = if a_lower == b_lower[j] { 0 } else { 1 };
             curr[j + 1] = (prev[j + 1] + 1)
                 .min(curr[j] + 1)
                 .min(prev[j] + cost);
+        }
+        // Fallback for strings > 16 if called directly in the future
+        if b_len > 16 {
+            for (j, b_ch) in b.bytes().skip(16).enumerate() {
+                let cost = if a_lower == b_ch.to_ascii_lowercase() { 0 } else { 1 };
+                curr[16 + j + 1] = (prev[16 + j + 1] + 1)
+                    .min(curr[16 + j] + 1)
+                    .min(prev[16 + j] + cost);
+            }
         }
         std::mem::swap(&mut prev, &mut curr);
     }
