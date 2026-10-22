@@ -12,3 +12,5 @@ __pycache__/
 
 python/pipeql_python/pipeql_python.abi3.so
 *.vsix
+crates/pipeql-python/.venv/
+.venv/
