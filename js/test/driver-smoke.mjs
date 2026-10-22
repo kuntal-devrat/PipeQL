@@ -281,26 +281,43 @@ assert.throws(() => createPipeqlDriver({ foo: 1 }), /Unsupported database driver
   assert.deepEqual(note, { id: 1, title: "y", is_pinned: 1 });
 }
 
-// 19. insertAndFetch on mysql2 falls back to run metadata (no RETURNING)
+// 19. insertAndFetch on mysql2 throws error (no RETURNING)
 {
   const raw = {
     config: {},
     query: () => {},
     promise: () => ({
       async query(sql, args) {
-        assert.ok(!/RETURNING/i.test(sql));
         return [[{ insertId: 9, affectedRows: 1 }], []];
       },
     }),
   };
   const db = createPipeqlDriver(raw);
-  const res = await db.insertAndFetch("into notes | insert [title = $title]", {
-    title: "Hi",
-  });
-  assert.deepEqual(res, { lastId: 9, changes: 1, rows: [] });
+  await assert.rejects(
+    () => db.insertAndFetch("into notes | insert [title = $title]", { title: "Hi" }),
+    /\[pipeql\] RETURNING \(insertAndFetch\/updateAndFetch\) is not supported on mysql2/
+  );
 }
 
-// 20. compile() exposes expanded args for $data sources
+// 20. updateAndFetch on mysql2 throws error (no RETURNING)
+{
+  const raw = {
+    config: {},
+    query: () => {},
+    promise: () => ({
+      async query(sql, args) {
+        return [[{ affectedRows: 1 }], []];
+      },
+    }),
+  };
+  const db = createPipeqlDriver(raw);
+  await assert.rejects(
+    () => db.updateAndFetch("from notes | filter id == $id | update [title = $title]", { id: 1, title: "Hi" }),
+    /\[pipeql\] RETURNING \(insertAndFetch\/updateAndFetch\) is not supported on mysql2/
+  );
+}
+
+// 21. compile() exposes expanded args for $data sources
 {
   const db = createPipeqlDriver(fakeSqlite3());
   const c = await db.compile("into notes | insert $data", {
@@ -311,7 +328,7 @@ assert.throws(() => createPipeqlDriver({ foo: 1 }), /Unsupported database driver
   assert.deepEqual(c.args, ["A", 0]);
 }
 
-// 21. UNION queries return rows (regression: dispatched as mutation, rows dropped)
+// 22. UNION queries return rows (regression: dispatched as mutation, rows dropped)
 {
   const raw = fakeSqlite3();
   const db = createPipeqlDriver(raw);
@@ -323,7 +340,7 @@ assert.throws(() => createPipeqlDriver({ foo: 1 }), /Unsupported database driver
   assert.ok(raw.calls[0][1].includes("UNION"), raw.calls[0][1]);
 }
 
-// 22. Missing user param fails loudly (regression: silently bound its name)
+// 23. Missing user param fails loudly (regression: silently bound its name)
 {
   const db = createPipeqlDriver(fakeSqlite3());
   await assert.rejects(
