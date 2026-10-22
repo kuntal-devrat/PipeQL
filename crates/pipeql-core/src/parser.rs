@@ -1386,9 +1386,13 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
-        match self.peek().clone() {
-            TokenKind::Ident(name) => {
+        match self.peek() {
+            TokenKind::Ident(_) => {
                 let token = self.advance();
+                let name = match token.kind {
+                    TokenKind::Ident(n) => n,
+                    _ => unreachable!(),
+                };
                 let ident = Ident::new(name, token.span);
 
                 // Check for function call: ident(args)
@@ -1433,15 +1437,21 @@ impl Parser {
                 Ok(Expr::Star)
             }
             TokenKind::Integer(v) => {
+                let v = *v;
                 self.advance();
                 Ok(Expr::Literal(Literal::Integer(v)))
             }
             TokenKind::Float(v) => {
+                let v = *v;
                 self.advance();
                 Ok(Expr::Literal(Literal::Float(v)))
             }
-            TokenKind::String(v) => {
-                self.advance();
+            TokenKind::String(_) => {
+                let token = self.advance();
+                let v = match token.kind {
+                    TokenKind::String(s) => s,
+                    _ => unreachable!(),
+                };
                 Ok(Expr::Literal(Literal::String(v)))
             }
             TokenKind::True => {
@@ -1456,15 +1466,23 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(Literal::Null))
             }
-            TokenKind::Param(name) => {
+            TokenKind::Param(_) => {
                 let token = self.advance();
+                let name = match token.kind {
+                    TokenKind::Param(n) => n,
+                    _ => unreachable!(),
+                };
                 Ok(Expr::Parameter(Parameter {
                     name,
                     span: token.span,
                 }))
             }
-            TokenKind::ParamBraced(name) => {
+            TokenKind::ParamBraced(_) => {
                 let token = self.advance();
+                let name = match token.kind {
+                    TokenKind::ParamBraced(n) => n,
+                    _ => unreachable!(),
+                };
                 Ok(Expr::Parameter(Parameter {
                     name,
                     span: token.span,
