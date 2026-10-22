@@ -332,4 +332,54 @@ assert.throws(() => createPipeqlDriver({ foo: 1 }), /Unsupported database driver
   );
 }
 
+// 23. close() method on db connection
+{
+  let closeCalled = false;
+  const raw = {
+    ...fakeSqlite3(),
+    close() {
+      closeCalled = true;
+    }
+  };
+  const db = createPipeqlDriver(raw);
+  await db.close();
+  assert.ok(closeCalled, "close() should have been called");
+}
+
+// 24. end() method fallback on db connection
+{
+  let endCalled = false;
+  const raw = {
+    ...fakeSqlite3(),
+    end() {
+      endCalled = true;
+    }
+  };
+  const db = createPipeqlDriver(raw);
+  await db.close();
+  assert.ok(endCalled, "end() should have been called");
+}
+
+// 25. async close() method on db connection
+{
+  let closeCalled = false;
+  const raw = {
+    ...fakeSqlite3(),
+    async close() {
+      closeCalled = true;
+    }
+  };
+  const db = createPipeqlDriver(raw);
+  await db.close();
+  assert.ok(closeCalled, "async close() should have been called");
+}
+
+// 26. no close() or end() method on db connection
+{
+  const raw = fakeSqlite3();
+  const db = createPipeqlDriver(raw);
+  await db.close();
+  assert.ok(true, "should not throw if close/end is missing");
+}
+
 console.log("all @pipeql/js/driver smoke tests passed");
