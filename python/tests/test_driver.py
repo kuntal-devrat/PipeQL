@@ -12,7 +12,7 @@ from pipeql_python.driver import create_pipeql_driver
 def test_driver_sqlite_crud_and_data_expansion():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    db = create_pipeql_driver(conn, dialect="sqlite")
+    db = create_pipeql_driver(conn, dialect="sqlite", driver="sqlite3")
 
     # Create table
     db.execute("table notes [id integer primary auto, title string, content string, is_archived integer default 0]")
@@ -57,7 +57,7 @@ def test_driver_sqlite_crud_and_data_expansion():
 def test_driver_union_query():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    db = create_pipeql_driver(conn, dialect="sqlite")
+    db = create_pipeql_driver(conn, dialect="sqlite", driver="sqlite3")
 
     db.execute("table users [id integer primary auto, name string]")
     db.execute("table admins [id integer primary auto, name string]")
@@ -73,8 +73,31 @@ def test_driver_union_query():
 
 def test_driver_missing_param_error():
     conn = sqlite3.connect(":memory:")
-    db = create_pipeql_driver(conn, dialect="sqlite")
+    db = create_pipeql_driver(conn, dialect="sqlite", driver="sqlite3")
     db.execute("table users [id integer, age integer]")
 
     with pytest.raises((KeyError, ValueError), match="missing value for parameter"):
         db.query("from users | filter age >= $min", {})
+
+def test_driver_close_called():
+    class MockConnection:
+        def __init__(self):
+            self.close_called = False
+
+        def close(self):
+            self.close_called = True
+
+    conn = MockConnection()
+    db = create_pipeql_driver(conn, dialect="sqlite", driver="sqlite3")
+    db.close()
+    assert conn.close_called
+
+
+def test_driver_close_fallback():
+    class MockConnectionWithoutClose:
+        pass
+
+    conn = MockConnectionWithoutClose()
+    db = create_pipeql_driver(conn, dialect="sqlite", driver="sqlite3")
+    # Should not throw an exception
+    db.close()
