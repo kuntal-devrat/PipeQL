@@ -205,8 +205,9 @@ export class PipeQL {
     let body: string[];
     if (isPlainObject(values)) {
       body = [];
+      let valCount = Object.keys(this._values).length;
       for (const [key, val] of Object.entries(values)) {
-        const pname = `b${Object.keys(this._values).length}`;
+        const pname = `b${valCount++}`;
         this._values[pname] = val;
         body.push(`${key} = $${pname}`);
       }
